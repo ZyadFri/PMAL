@@ -25,7 +25,6 @@
     },
     methods: {
       submitForm() {
-        // Logique pour envoyer le formulaire de modification
         console.log('Formulaire de modification soumis');
       },
     },
