@@ -12,8 +12,10 @@ const routes = [
   { path: '/edit-job/:id', component: EditJob, props: true },
   { path: '/job/:id', component: JobDetail, props: true },
 ];
+
 const router = createRouter({
   history: createWebHistory(),
   routes,
 });
+
 export default router;
