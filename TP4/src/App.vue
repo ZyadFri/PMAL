@@ -1,14 +1,9 @@
 <template>
-  <div id="app">
-    <RouterLink to="/Home.vue">Home</RouterLink>
-    <RouterLink to="/filter">Filter</RouterLink>
-    <RouterLink to="/add-job">Add Job</RouterLink>
-    <RouterView />
-  </div>
+  <router-view />
 </template>
 
 <script setup>
-import { RouterLink, RouterView } from 'vue-router'
+import { RouterView } from 'vue-router';
 </script>
 
 <style>
