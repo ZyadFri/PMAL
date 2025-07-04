@@ -2,7 +2,7 @@
 
 A full-stack MERN application for assessing and scoring project maturity levels with Keycloak authentication.
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### Prerequisites
 - Node.js 16+
