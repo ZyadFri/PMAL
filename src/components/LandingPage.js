@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const LandingPage = () => {
   const [isVisible, setIsVisible] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const navigate = useNavigate();
 
   useEffect(() => {
     setIsVisible(true);
@@ -18,7 +20,7 @@ const LandingPage = () => {
 
   const handleNavigation = (path) => {
     console.log(`Navigate to: ${path}`);
-    // Navigation will be handled by parent component
+    navigate(path);
   };
 
   const features = [

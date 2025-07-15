@@ -19,7 +19,10 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true,
+    required: function() {
+      // Password is only required for non-Keycloak users
+      return this.authProvider !== 'keycloak';
+    },
     minlength: 6
   },
   firstName: {
@@ -78,6 +81,25 @@ const userSchema = new mongoose.Schema({
   managedProjects: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Project'
+  }],
+  // Keycloak integration fields
+  keycloakId: {
+    type: String,
+    unique: true,
+    sparse: true, // Allows null values while maintaining uniqueness
+    index: true
+  },
+  authProvider: {
+    type: String,
+    enum: ['local', 'keycloak'],
+    default: 'local'
+  },
+  emailVerified: {
+    type: Boolean,
+    default: false
+  },
+  keycloakRoles: [{
+    type: String
   }]
 }, {
   timestamps: true
@@ -88,9 +110,16 @@ userSchema.index({ username: 1 });
 userSchema.index({ email: 1 });
 userSchema.index({ userRole: 1 });
 userSchema.index({ isActivated: 1 });
+userSchema.index({ keycloakId: 1 });
+userSchema.index({ authProvider: 1 });
 
-// Hash password before saving
+// Hash password before saving (only for local auth users)
 userSchema.pre('save', async function(next) {
+  // Skip password hashing for Keycloak users
+  if (this.authProvider === 'keycloak') {
+    return next();
+  }
+  
   if (!this.isModified('password')) {
     return next();
   }
@@ -104,14 +133,17 @@ userSchema.pre('save', async function(next) {
   }
 });
 
-// Compare password method
+// Compare password method (only for local auth users)
 userSchema.methods.comparePassword = async function(candidatePassword) {
+  if (this.authProvider === 'keycloak') {
+    throw new Error('Password comparison not available for Keycloak users');
+  }
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
 // Get full name virtual
 userSchema.virtual('fullName').get(function() {
-  return `${this.firstName} ${this.lastName}`;
+  return `${this.firstName} ${this.lastName}`.trim();
 });
 
 // Remove password from JSON output
@@ -119,6 +151,30 @@ userSchema.methods.toJSON = function() {
   const userObject = this.toObject();
   delete userObject.password;
   return userObject;
+};
+
+// Check if user has admin privileges (including Keycloak roles)
+userSchema.methods.hasAdminAccess = function() {
+  return this.isAdmin || 
+         this.userRole === 'Admin' || 
+         (this.keycloakRoles && (
+           this.keycloakRoles.includes('admin') || 
+           this.keycloakRoles.includes('pmal-admin') || 
+           this.keycloakRoles.includes('realm-admin')
+         ));
+};
+
+// Update user info from Keycloak token
+userSchema.methods.updateFromKeycloak = function(keycloakData) {
+  this.firstName = keycloakData.firstName || this.firstName;
+  this.lastName = keycloakData.lastName || this.lastName;
+  this.email = keycloakData.email || this.email;
+  this.emailVerified = keycloakData.emailVerified || this.emailVerified;
+  this.keycloakRoles = keycloakData.roles || this.keycloakRoles;
+  this.lastLogin = new Date();
+  this.isActivated = true; // Keycloak users are considered activated
+  
+  return this.save();
 };
 
 // Static method to find activated users
@@ -129,6 +185,61 @@ userSchema.statics.findActivatedUsers = function() {
 // Static method to find users by role
 userSchema.statics.findByRole = function(role) {
   return this.find({ userRole: role, isActivated: true });
+};
+
+// Static method to find or create user from Keycloak data
+userSchema.statics.findOrCreateFromKeycloak = async function(keycloakData) {
+  try {
+    // Try to find existing user by Keycloak ID first
+    let user = await this.findOne({ keycloakId: keycloakData.id });
+    
+    if (!user) {
+      // Try to find by email
+      user = await this.findOne({ email: keycloakData.email });
+      
+      if (user) {
+        // Update existing user with Keycloak ID
+        user.keycloakId = keycloakData.id;
+        user.authProvider = 'keycloak';
+        user.isActivated = true;
+        await user.updateFromKeycloak(keycloakData);
+        return user;
+      }
+    }
+    
+    if (!user) {
+      // Create new user
+      user = new this({
+        keycloakId: keycloakData.id,
+        username: keycloakData.username,
+        email: keycloakData.email,
+        firstName: keycloakData.firstName || 'Unknown',
+        lastName: keycloakData.lastName || 'User',
+        userRole: keycloakData.userRole || 'Employee',
+        authProvider: 'keycloak',
+        isActivated: true,
+        emailVerified: keycloakData.emailVerified || false,
+        keycloakRoles: keycloakData.roles || [],
+        lastLogin: new Date()
+      });
+      
+      await user.save();
+      return user;
+    }
+    
+    // Update existing Keycloak user
+    await user.updateFromKeycloak(keycloakData);
+    return user;
+    
+  } catch (error) {
+    console.error('Error in findOrCreateFromKeycloak:', error);
+    throw error;
+  }
+};
+
+// Static method to find users by auth provider
+userSchema.statics.findByAuthProvider = function(provider) {
+  return this.find({ authProvider: provider });
 };
 
 module.exports = mongoose.model('User', userSchema);

@@ -1,127 +1,50 @@
 import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import api from '../../services/api';
 
 const ProjectDetail = () => {
   const [project, setProject] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
 
-  // Mock project data
-  const mockProject = {
-    id: 1,
-    name: 'E-Commerce Platform Redesign',
-    description: 'Complete overhaul of the existing e-commerce platform with modern UI/UX design, improved performance, and enhanced user experience. This project aims to increase conversion rates by 25% and reduce bounce rates by 40%. The redesign will include a mobile-first approach, accessibility improvements, and integration with modern payment systems.',
-    phase: 'Development',
-    status: 'Quick Assessment Complete',
-    priority: 'High',
-    progress: 75,
-    overallScore: 4.2,
-    owner: {
-      name: 'John Doe',
-      username: 'john.doe',
-      email: 'john.doe@company.com',
-      avatar: '👨‍💼'
-    },
-    manager: {
-      name: 'Sarah Johnson',
-      username: 'sarah.johnson',
-      email: 'sarah.johnson@company.com',
-      avatar: '👩‍💼'
-    },
-    team: [
-      { name: 'Mike Chen', role: 'Frontend Developer', avatar: '👨‍💻', status: 'active', email: 'mike.chen@company.com' },
-      { name: 'Lisa Wang', role: 'UI/UX Designer', avatar: '👩‍🎨', status: 'active', email: 'lisa.wang@company.com' },
-      { name: 'Alex Kim', role: 'Backend Developer', avatar: '👨‍🔒', status: 'active', email: 'alex.kim@company.com' },
-      { name: 'Emily Davis', role: 'QA Engineer', avatar: '👩‍🔬', status: 'active', email: 'emily.davis@company.com' }
-    ],
-    startDate: '2024-01-15',
-    endDate: '2024-06-30',
-    budget: 150000,
-    tags: ['React', 'Node.js', 'PostgreSQL', 'AWS', 'Stripe', 'TypeScript'],
-    quickAssessment: {
-      completed: true,
-      completedAt: '2024-02-15',
-      score: 4.2,
-      weakestCategory: 'Security & Compliance',
-      duration: 45
-    },
-    deepAssessment: {
-      completed: false,
-      progress: 60,
-      currentCategory: 'Development Practices',
-      completedCategories: ['Project Management', 'Requirements Analysis', 'Architecture Design']
-    },
-    assessmentHistory: [
-      {
-        id: 1,
-        type: 'Quick Assessment',
-        date: '2024-02-15',
-        score: 4.2,
-        assessor: 'John Doe',
-        status: 'completed'
-      },
-      {
-        id: 2,
-        type: 'Deep Assessment (Partial)',
-        date: '2024-02-20',
-        score: 4.1,
-        assessor: 'Sarah Johnson',
-        status: 'in-progress'
-      }
-    ],
-    milestones: [
-      { id: 1, name: 'Requirements Gathering', date: '2024-02-01', status: 'completed', description: 'Complete stakeholder interviews and requirement documentation' },
-      { id: 2, name: 'UI/UX Design', date: '2024-03-01', status: 'completed', description: 'Finalize wireframes and visual designs' },
-      { id: 3, name: 'Backend Development', date: '2024-04-15', status: 'in-progress', description: 'API development and database optimization' },
-      { id: 4, name: 'Frontend Development', date: '2024-05-01', status: 'in-progress', description: 'React components and user interface implementation' },
-      { id: 5, name: 'Testing & QA', date: '2024-05-30', status: 'pending', description: 'Comprehensive testing and quality assurance' },
-      { id: 6, name: 'Deployment', date: '2024-06-30', status: 'pending', description: 'Production deployment and go-live' }
-    ],
-    risks: [
-      { 
-        id: 1, 
-        title: 'Third-party API Dependencies', 
-        level: 'medium', 
-        status: 'monitoring',
-        description: 'Payment gateway and shipping API reliability concerns',
-        mitigation: 'Implement fallback systems and monitoring'
-      },
-      { 
-        id: 2, 
-        title: 'Database Migration Complexity', 
-        level: 'high', 
-        status: 'mitigating',
-        description: 'Large dataset migration may cause extended downtime',
-        mitigation: 'Phased migration approach with rollback plan'
-      },
-      { 
-        id: 3, 
-        title: 'User Adoption Resistance', 
-        level: 'low', 
-        status: 'monitoring',
-        description: 'Users may resist new interface changes',
-        mitigation: 'User training and gradual rollout strategy'
-      }
-    ],
-    objectives: [
-      'Increase conversion rates by 25%',
-      'Reduce page load times by 50%',
-      'Improve mobile user experience',
-      'Implement modern payment systems',
-      'Enhance accessibility compliance'
-    ],
-    createdAt: '2024-01-10',
-    updatedAt: '2024-02-28'
-  };
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
 
   useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
-      setProject(mockProject);
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
+
+    if (id) {
+      loadProject();
+    }
+  }, [id, isAuthenticated, navigate]);
+
+  const loadProject = async () => {
+    try {
+      setIsLoading(true);
+      setError('');
+      
+      const response = await api.get(`/projects/${id}`);
+      
+      if (response.data.success) {
+        setProject(response.data.data.project);
+      } else {
+        setError('Failed to load project');
+      }
+    } catch (err) {
+      console.error('Error loading project:', err);
+      setError(err.response?.data?.message || 'Failed to load project');
+    } finally {
       setIsLoading(false);
-    }, 1000);
-  }, []);
+    }
+  };
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -147,28 +70,8 @@ const ProjectDetail = () => {
     }
   };
 
-  const getRiskColor = (level) => {
-    switch (level) {
-      case 'high': return 'text-red-600 bg-red-100 border-red-200';
-      case 'medium': return 'text-yellow-600 bg-yellow-100 border-yellow-200';
-      case 'low': return 'text-green-600 bg-green-100 border-green-200';
-      default: return 'text-gray-600 bg-gray-100 border-gray-200';
-    }
-  };
-
-  const getMilestoneColor = (status) => {
-    switch (status) {
-      case 'completed': return 'text-green-600 bg-green-100';
-      case 'in-progress': return 'text-blue-600 bg-blue-100';
-      case 'pending': return 'text-gray-600 bg-gray-100';
-      default: return 'text-gray-600 bg-gray-100';
-    }
-  };
-
   const handleStartAssessment = (type) => {
-    console.log(`Starting ${type} assessment`);
-    // Navigate to assessment page
-    window.location.href = `/assessments/${type}/${project.id}`;
+    navigate(`/assessments/${type}/${project._id}`);
   };
 
   const handleEditProject = () => {
@@ -179,36 +82,37 @@ const ProjectDetail = () => {
     setShowDeleteModal(true);
   };
 
-  const confirmDelete = () => {
-    console.log('Delete project');
-    setShowDeleteModal(false);
-    // Navigate back to projects
-    window.location.href = '/projects';
+  const confirmDelete = async () => {
+    try {
+      await api.delete(`/projects/${project._id}`);
+      setShowDeleteModal(false);
+      navigate('/projects', { 
+        state: { message: 'Project deleted successfully' }
+      });
+    } catch (err) {
+      console.error('Error deleting project:', err);
+      setError('Failed to delete project');
+    }
   };
 
   const handleBack = () => {
-    window.history.back();
+    navigate('/projects');
   };
 
   const handleGenerateReport = () => {
-    console.log('Generate report');
-    // Navigate to reports page
-    window.location.href = `/reports/project/${project.id}`;
+    navigate(`/reports/project/${project._id}`);
   };
 
   const handleViewAnalytics = () => {
-    console.log('View analytics');
-    // Navigate to analytics page
-    window.location.href = `/analytics/project/${project.id}`;
+    navigate(`/analytics/project/${project._id}`);
   };
 
   const handleExportData = () => {
-    console.log('Export data');
-    // Trigger data export
+    console.log('Export data functionality to be implemented');
   };
 
   const calculateDaysRemaining = () => {
-    if (!project.endDate) return null;
+    if (!project?.endDate) return null;
     const today = new Date();
     const endDate = new Date(project.endDate);
     const diffTime = endDate - today;
@@ -221,7 +125,7 @@ const ProjectDetail = () => {
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-pulse">
-            <span className="text-2xl font-bold text-white">📁</span>
+            <span className="text-2xl font-bold text-white">P</span>
           </div>
           <div className="text-gray-600">Loading project details...</div>
         </div>
@@ -229,18 +133,24 @@ const ProjectDetail = () => {
     );
   }
 
-  if (!project) {
+  if (error || !project) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-6xl mb-4">❌</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Project Not Found</h2>
-          <p className="text-gray-600 mb-6">The project you're looking for doesn't exist or you don't have access to it.</p>
+          <div className="w-24 h-24 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <span className="text-3xl text-red-600">!</span>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            {error ? 'Error Loading Project' : 'Project Not Found'}
+          </h2>
+          <p className="text-gray-600 mb-6">
+            {error || "The project you're looking for doesn't exist or you don't have access to it."}
+          </p>
           <button
             onClick={handleBack}
             className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors duration-200"
           >
-            Go Back
+            Back to Projects
           </button>
         </div>
       </div>
@@ -248,11 +158,9 @@ const ProjectDetail = () => {
   }
 
   const tabs = [
-    { id: 'overview', label: 'Overview', icon: '📋' },
-    { id: 'team', label: 'Team', icon: '👥' },
-    { id: 'assessments', label: 'Assessments', icon: '📊' },
-    { id: 'milestones', label: 'Milestones', icon: '🎯' },
-    { id: 'risks', label: 'Risks', icon: '⚠️' }
+    { id: 'overview', label: 'Overview' },
+    { id: 'team', label: 'Team' },
+    { id: 'assessments', label: 'Assessments' }
   ];
 
   const daysRemaining = calculateDaysRemaining();
@@ -273,7 +181,7 @@ const ProjectDetail = () => {
               
               <div className="flex items-center space-x-4">
                 <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center text-white text-2xl">
-                  📁
+                  P
                 </div>
                 <div>
                   <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
@@ -304,15 +212,6 @@ const ProjectDetail = () => {
                   Start Assessment
                 </button>
               )}
-              
-              {project.quickAssessment.completed && !project.deepAssessment.completed && (
-                <button
-                  onClick={() => handleStartAssessment('deep')}
-                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-xl hover:shadow-lg transform hover:scale-105 transition-all duration-200"
-                >
-                  Deep Assessment
-                </button>
-              )}
 
               <button
                 onClick={handleEditProject}
@@ -325,7 +224,7 @@ const ProjectDetail = () => {
                 onClick={handleDeleteProject}
                 className="p-3 text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200"
               >
-                🗑️
+                Delete
               </button>
             </div>
           </div>
@@ -334,12 +233,12 @@ const ProjectDetail = () => {
           <div className="mt-6">
             <div className="flex justify-between text-sm text-gray-600 mb-2">
               <span>Project Progress</span>
-              <span>{project.progress}% Complete</span>
+              <span>{project.progress || 0}% Complete</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-3">
               <div 
                 className="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full transition-all duration-300"
-                style={{ width: `${project.progress}%` }}
+                style={{ width: `${project.progress || 0}%` }}
               />
             </div>
           </div>
@@ -354,14 +253,13 @@ const ProjectDetail = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors duration-200 flex items-center space-x-2 ${
+                className={`py-4 px-2 border-b-2 font-medium text-sm transition-colors duration-200 ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <span>{tab.icon}</span>
-                <span>{tab.label}</span>
+                {tab.label}
               </button>
             ))}
           </div>
@@ -376,22 +274,13 @@ const ProjectDetail = () => {
             <div className="lg:col-span-2 space-y-6">
               <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
                 <h3 className="text-xl font-semibold text-gray-900 mb-4">Project Description</h3>
-                <p className="text-gray-700 leading-relaxed mb-4">{project.description}</p>
-                
-                {project.objectives.length > 0 && (
-                  <div>
-                    <h4 className="font-semibold text-gray-900 mb-2">Objectives</h4>
-                    <ul className="list-disc list-inside space-y-1 text-gray-700">
-                      {project.objectives.map((objective, index) => (
-                        <li key={index}>{objective}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                <p className="text-gray-700 leading-relaxed">
+                  {project.description || 'No description provided.'}
+                </p>
               </div>
 
               <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-                <h3 className="text-xl font-semibold text-gray-900 mb-4">Assessment Overview</h3>
+                <h3 className="text-xl font-semibold text-gray-900 mb-4">Assessment Status</h3>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Quick Assessment */}
@@ -399,26 +288,22 @@ const ProjectDetail = () => {
                     <div className="flex items-center justify-between mb-3">
                       <h4 className="font-semibold text-gray-900">Quick Assessment</h4>
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        project.quickAssessment.completed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                        project.quickAssessment?.isCompleted ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
                       }`}>
-                        {project.quickAssessment.completed ? 'Completed' : 'Not Started'}
+                        {project.quickAssessment?.isCompleted ? 'Completed' : 'Not Started'}
                       </span>
                     </div>
                     
-                    {project.quickAssessment.completed ? (
+                    {project.quickAssessment?.isCompleted ? (
                       <div>
                         <div className="text-2xl font-bold text-green-600 mb-1">
-                          {project.quickAssessment.score}/5.0
+                          {project.quickAssessment.score || 0}/5.0
                         </div>
-                        <div className="text-sm text-gray-600">
-                          Completed on {new Date(project.quickAssessment.completedAt).toLocaleDateString()}
-                        </div>
-                        <div className="text-sm text-gray-600">
-                          Duration: {project.quickAssessment.duration} minutes
-                        </div>
-                        <div className="text-sm text-red-600 mt-1">
-                          Weakest: {project.quickAssessment.weakestCategory}
-                        </div>
+                        {project.quickAssessment.completedAt && (
+                          <div className="text-sm text-gray-600">
+                            Completed on {new Date(project.quickAssessment.completedAt).toLocaleDateString()}
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="text-center py-4 text-gray-500">
@@ -438,67 +323,35 @@ const ProjectDetail = () => {
                     <div className="flex items-center justify-between mb-3">
                       <h4 className="font-semibold text-gray-900">Deep Assessment</h4>
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        project.deepAssessment.completed ? 'bg-green-100 text-green-700' : 
-                        project.deepAssessment.progress > 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
+                        project.deepAssessment?.isCompleted ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
                       }`}>
-                        {project.deepAssessment.completed ? 'Completed' : 
-                         project.deepAssessment.progress > 0 ? 'In Progress' : 'Not Started'}
+                        {project.deepAssessment?.isCompleted ? 'Completed' : 'Not Started'}
                       </span>
                     </div>
                     
-                    {project.deepAssessment.progress > 0 ? (
-                      <div>
-                        <div className="text-lg font-bold text-blue-600 mb-1">
-                          {project.deepAssessment.progress}% Complete
-                        </div>
-                        <div className="text-sm text-gray-600 mb-2">
-                          Current: {project.deepAssessment.currentCategory}
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
-                          <div 
-                            className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                            style={{ width: `${project.deepAssessment.progress}%` }}
-                          />
-                        </div>
-                        <button
-                          onClick={() => handleStartAssessment('deep')}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
-                        >
-                          Continue Assessment
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="text-center py-4 text-gray-500">
-                        <div className="text-2xl mb-2">🔍</div>
-                        {project.quickAssessment.completed ? (
-                          <button
-                            onClick={() => handleStartAssessment('deep')}
-                            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-200"
-                          >
-                            Start Deep Assessment
-                          </button>
-                        ) : (
-                          <p className="text-sm">Complete Quick Assessment first</p>
-                        )}
-                      </div>
-                    )}
+                    <div className="text-center py-4 text-gray-500">
+                      <div className="text-2xl mb-2">🔍</div>
+                      <p className="text-sm">Deep assessment coming soon</p>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-                <h3 className="text-xl font-semibold text-gray-900 mb-4">Project Tags</h3>
-                <div className="flex flex-wrap gap-2">
-                  {project.tags.map((tag, index) => (
-                    <span
-                      key={index}
-                      className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium"
-                    >
-                      {tag}
-                    </span>
-                  ))}
+              {project.tags && project.tags.length > 0 && (
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
+                  <h3 className="text-xl font-semibold text-gray-900 mb-4">Project Tags</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {project.tags.map((tag, index) => (
+                      <span
+                        key={index}
+                        className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Sidebar */}
@@ -508,33 +361,42 @@ const ProjectDetail = () => {
                 <div className="space-y-4">
                   <div>
                     <span className="text-sm font-medium text-gray-500">Start Date</span>
-                    <div className="text-gray-900">{new Date(project.startDate).toLocaleDateString()}</div>
+                    <div className="text-gray-900">
+                      {project.startDate ? new Date(project.startDate).toLocaleDateString() : 'Not set'}
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-sm font-medium text-gray-500">End Date</span>
-                    <div className="text-gray-900">{new Date(project.endDate).toLocaleDateString()}</div>
-                  </div>
-                  <div>
-                    <span className="text-sm font-medium text-gray-500">Budget</span>
-                    <div className="text-gray-900">${project.budget.toLocaleString()}</div>
-                  </div>
+                  {project.endDate && (
+                    <div>
+                      <span className="text-sm font-medium text-gray-500">End Date</span>
+                      <div className="text-gray-900">{new Date(project.endDate).toLocaleDateString()}</div>
+                    </div>
+                  )}
+                  {project.budget && (
+                    <div>
+                      <span className="text-sm font-medium text-gray-500">Budget</span>
+                      <div className="text-gray-900">${project.budget.toLocaleString()}</div>
+                    </div>
+                  )}
                   <div>
                     <span className="text-sm font-medium text-gray-500">Owner</span>
-                    <div className="flex items-center space-x-2 mt-1">
-                      <span className="text-lg">{project.owner.avatar}</span>
-                      <span className="text-gray-900">{project.owner.name}</span>
+                    <div className="text-gray-900">
+                      {project.owner ? 
+                        `${project.owner.firstName} ${project.owner.lastName}` : 
+                        'Unknown'
+                      }
                     </div>
                   </div>
-                  <div>
-                    <span className="text-sm font-medium text-gray-500">Manager</span>
-                    <div className="flex items-center space-x-2 mt-1">
-                      <span className="text-lg">{project.manager.avatar}</span>
-                      <span className="text-gray-900">{project.manager.name}</span>
+                  {project.manager && (
+                    <div>
+                      <span className="text-sm font-medium text-gray-500">Manager</span>
+                      <div className="text-gray-900">
+                        {`${project.manager.firstName} ${project.manager.lastName}`}
+                      </div>
                     </div>
-                  </div>
+                  )}
                   <div>
                     <span className="text-sm font-medium text-gray-500">Team Size</span>
-                    <div className="text-gray-900">{project.team.length} members</div>
+                    <div className="text-gray-900">{project.team?.length || 0} members</div>
                   </div>
                 </div>
               </div>
@@ -544,24 +406,21 @@ const ProjectDetail = () => {
                 <div className="space-y-3">
                   <button 
                     onClick={handleViewAnalytics}
-                    className="w-full p-3 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-colors duration-200 text-left flex items-center space-x-2"
+                    className="w-full p-3 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-colors duration-200 text-left"
                   >
-                    <span>📊</span>
-                    <span>View Analytics</span>
+                    View Analytics
                   </button>
                   <button 
                     onClick={handleGenerateReport}
-                    className="w-full p-3 bg-green-50 text-green-700 rounded-xl hover:bg-green-100 transition-colors duration-200 text-left flex items-center space-x-2"
+                    className="w-full p-3 bg-green-50 text-green-700 rounded-xl hover:bg-green-100 transition-colors duration-200 text-left"
                   >
-                    <span>📋</span>
-                    <span>Generate Report</span>
+                    Generate Report
                   </button>
                   <button 
                     onClick={handleExportData}
-                    className="w-full p-3 bg-purple-50 text-purple-700 rounded-xl hover:bg-purple-100 transition-colors duration-200 text-left flex items-center space-x-2"
+                    className="w-full p-3 bg-purple-50 text-purple-700 rounded-xl hover:bg-purple-100 transition-colors duration-200 text-left"
                   >
-                    <span>📤</span>
-                    <span>Export Data</span>
+                    Export Data
                   </button>
                 </div>
               </div>
@@ -573,67 +432,67 @@ const ProjectDetail = () => {
           <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-2xl font-semibold text-gray-900">Team Members</h3>
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors duration-200">
-                Add Member
-              </button>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {/* Owner */}
-              <div className="p-6 border-2 border-blue-200 bg-blue-50 rounded-xl">
-                <div className="flex items-center space-x-3 mb-3">
-                  <div className="text-3xl">{project.owner.avatar}</div>
-                  <div>
-                    <div className="font-semibold text-gray-900">{project.owner.name}</div>
+              {project.owner && (
+                <div className="p-6 border-2 border-blue-200 bg-blue-50 rounded-xl">
+                  <div className="mb-3">
+                    <div className="font-semibold text-gray-900">
+                      {`${project.owner.firstName} ${project.owner.lastName}`}
+                    </div>
                     <div className="text-sm text-blue-600 font-medium">Project Owner</div>
                     <div className="text-xs text-gray-600">{project.owner.email}</div>
                   </div>
-                </div>
-                <div className="flex justify-between items-center">
                   <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
                     Owner
                   </span>
                 </div>
-              </div>
+              )}
 
               {/* Manager */}
-              <div className="p-6 border-2 border-purple-200 bg-purple-50 rounded-xl">
-                <div className="flex items-center space-x-3 mb-3">
-                  <div className="text-3xl">{project.manager.avatar}</div>
-                  <div>
-                    <div className="font-semibold text-gray-900">{project.manager.name}</div>
+              {project.manager && (
+                <div className="p-6 border-2 border-purple-200 bg-purple-50 rounded-xl">
+                  <div className="mb-3">
+                    <div className="font-semibold text-gray-900">
+                      {`${project.manager.firstName} ${project.manager.lastName}`}
+                    </div>
                     <div className="text-sm text-purple-600 font-medium">Project Manager</div>
                     <div className="text-xs text-gray-600">{project.manager.email}</div>
                   </div>
-                </div>
-                <div className="flex justify-between items-center">
                   <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
                     Manager
                   </span>
                 </div>
-              </div>
+              )}
 
               {/* Team Members */}
-              {project.team.map((member, index) => (
+              {project.team && project.team.length > 0 && project.team.map((member, index) => (
                 <div key={index} className="p-6 border border-gray-200 rounded-xl hover:shadow-md transition-shadow duration-200">
-                  <div className="flex items-center space-x-3 mb-3">
-                    <div className="text-3xl">{member.avatar}</div>
-                    <div>
-                      <div className="font-semibold text-gray-900">{member.name}</div>
-                      <div className="text-sm text-gray-600">{member.role}</div>
-                      <div className="text-xs text-gray-500">{member.email}</div>
+                  <div className="mb-3">
+                    <div className="font-semibold text-gray-900">
+                      {member.user ? 
+                        `${member.user.firstName} ${member.user.lastName}` : 
+                        'Unknown Member'
+                      }
                     </div>
+                    <div className="text-sm text-gray-600">{member.role}</div>
+                    {member.user?.email && (
+                      <div className="text-xs text-gray-500">{member.user.email}</div>
+                    )}
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      member.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                    }`}>
-                      {member.status}
-                    </span>
-                    <button className="text-gray-400 hover:text-gray-600">⋯</button>
-                  </div>
+                  <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                    {member.role}
+                  </span>
                 </div>
               ))}
+
+              {(!project.team || project.team.length === 0) && !project.manager && (
+                <div className="col-span-full text-center py-8 text-gray-500">
+                  <p>No team members added yet</p>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -643,33 +502,27 @@ const ProjectDetail = () => {
             <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
               <h3 className="text-2xl font-semibold text-gray-900 mb-6">Assessment History</h3>
               
-              <div className="space-y-4">
-                {project.assessmentHistory.map((assessment) => (
-                  <div key={assessment.id} className="p-4 border border-gray-200 rounded-xl hover:shadow-md transition-shadow duration-200">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="font-semibold text-gray-900">{assessment.type}</div>
-                        <div className="text-sm text-gray-600">
-                          by {assessment.assessor} • {new Date(assessment.date).toLocaleDateString()}
+              {project.assessmentHistory && project.assessmentHistory.length > 0 ? (
+                <div className="space-y-4">
+                  {project.assessmentHistory.map((assessment, index) => (
+                    <div key={index} className="p-4 border border-gray-200 rounded-xl hover:shadow-md transition-shadow duration-200">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div className="font-semibold text-gray-900">Assessment</div>
+                          <div className="text-sm text-gray-600">
+                            {assessment.date ? new Date(assessment.date).toLocaleDateString() : 'Date not available'}
+                          </div>
                         </div>
-                        <div className={`inline-block px-2 py-1 rounded-full text-xs font-medium mt-2 ${
-                          assessment.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
-                        }`}>
-                          {assessment.status}
+                        <div className="text-right">
+                          <div className="text-xl font-bold text-green-600">
+                            {assessment.score || 'N/A'}/5.0
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xl font-bold text-green-600">{assessment.score}/5.0</div>
-                        <button className="text-sm text-blue-600 hover:text-blue-700 mt-1">
-                          View Details
-                        </button>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-
-              {project.assessmentHistory.length === 0 && (
+                  ))}
+                </div>
+              ) : (
                 <div className="text-center py-8 text-gray-500">
                   <div className="text-4xl mb-2">📊</div>
                   <p>No assessments completed yet</p>
@@ -684,89 +537,6 @@ const ProjectDetail = () => {
             </div>
           </div>
         )}
-
-        {activeTab === 'milestones' && (
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-semibold text-gray-900">Project Milestones</h3>
-              <button className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors duration-200">
-                Add Milestone
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              {project.milestones.map((milestone, index) => (
-                <div key={milestone.id} className="flex items-start space-x-4 p-4 border border-gray-200 rounded-xl hover:shadow-md transition-shadow duration-200">
-                  <div className="flex-shrink-0 mt-1">
-                    <div className={`w-4 h-4 rounded-full ${
-                      milestone.status === 'completed' ? 'bg-green-500' :
-                      milestone.status === 'in-progress' ? 'bg-blue-500' : 'bg-gray-300'
-                    }`} />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="font-semibold text-gray-900">{milestone.name}</div>
-                        <div className="text-sm text-gray-600 mt-1">{milestone.description}</div>
-                        <div className="text-xs text-gray-500 mt-2">
-                          Due: {new Date(milestone.date).toLocaleDateString()}
-                        </div>
-                      </div>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium ${getMilestoneColor(milestone.status)}`}>
-                        {milestone.status}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'risks' && (
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-semibold text-gray-900">Risk Management</h3>
-              <button className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors duration-200">
-                Add Risk
-              </button>
-            </div>
-            
-            <div className="space-y-4">
-              {project.risks.map((risk) => (
-                <div key={risk.id} className={`p-4 border rounded-xl ${getRiskColor(risk.level)}`}>
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="flex-1">
-                      <div className="font-semibold text-gray-900">{risk.title}</div>
-                      <div className="text-sm text-gray-600 mt-1">{risk.description}</div>
-                    </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getRiskColor(risk.level)}`}>
-                      {risk.level} risk
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="font-medium text-gray-700">Status:</span>
-                      <span className="ml-2 text-gray-900 capitalize">{risk.status}</span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700">Mitigation:</span>
-                      <span className="ml-2 text-gray-900">{risk.mitigation}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {project.risks.length === 0 && (
-                <div className="text-center py-8 text-gray-500">
-                  <div className="text-4xl mb-2">⚠️</div>
-                  <p>No risks identified yet</p>
-                  <p className="text-sm mt-1">Add risks to better manage your project</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Delete Confirmation Modal */}
@@ -775,11 +545,11 @@ const ProjectDetail = () => {
           <div className="bg-white rounded-2xl p-8 max-w-md mx-4">
             <div className="text-center">
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl">🗑️</span>
+                <span className="text-2xl text-red-600">!</span>
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-2">Delete Project</h3>
               <p className="text-gray-600 mb-6">
-                Are you sure you want to delete "{project.name}"? This action cannot be undone and will remove all associated data.
+                Are you sure you want to delete "{project.name}"? This action cannot be undone.
               </p>
               <div className="flex space-x-3">
                 <button
@@ -800,7 +570,7 @@ const ProjectDetail = () => {
         </div>
       )}
 
-      {/* Edit Project Modal */}
+      {/* Edit Project Modal - Simplified */}
       {showEditModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -814,113 +584,14 @@ const ProjectDetail = () => {
               </button>
             </div>
             
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Project Name
-                </label>
-                <input
-                  type="text"
-                  defaultValue={project.name}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Description
-                </label>
-                <textarea
-                  defaultValue={project.description}
-                  rows={4}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                    Phase
-                  </label>
-                  <select
-                    defaultValue={project.phase}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                  >
-                    <option value="Planning">Planning</option>
-                    <option value="Development">Development</option>
-                    <option value="Testing">Testing</option>
-                    <option value="Deployment">Deployment</option>
-                    <option value="Maintenance">Maintenance</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                    Priority
-                  </label>
-                  <select
-                    defaultValue={project.priority}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                  >
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    defaultValue={project.startDate}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-900 mb-2">
-                    End Date
-                  </label>
-                  <input
-                    type="date"
-                    defaultValue={project.endDate}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Budget (USD)
-                </label>
-                <input
-                  type="number"
-                  defaultValue={project.budget}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-3 pt-6">
-                <button
-                  onClick={() => setShowEditModal(false)}
-                  className="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors duration-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    console.log('Save project changes');
-                    setShowEditModal(false);
-                  }}
-                  className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors duration-200"
-                >
-                  Save Changes
-                </button>
-              </div>
+            <div className="text-center py-8 text-gray-500">
+              <p>Project editing functionality will be implemented soon.</p>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="mt-4 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors duration-200"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

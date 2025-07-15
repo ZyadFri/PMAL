@@ -53,136 +53,162 @@ const authReducer = (state, action) => {
 
 export const AuthProvider = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
-  const { keycloak } = useKeycloak();
+  const { keycloak, initialized } = useKeycloak();
 
   useEffect(() => {
-    if (keycloak?.authenticated) {
-      // If Keycloak is authenticated, get user info from our backend
-      fetchUserProfile();
-    } else {
-      dispatch({ type: 'SET_LOADING', payload: false });
-    }
-  }, [keycloak?.authenticated]);
-
-  const fetchUserProfile = async () => {
-    try {
-      const response = await api.get('/auth/me');
-      dispatch({
-        type: 'LOGIN_SUCCESS',
-        payload: {
-          user: response.data.data.user,
-          token: keycloak.token
+    if (initialized) {
+      if (keycloak?.authenticated) {
+        // Get user info directly from Keycloak token - no backend call needed
+        const userInfo = getKeycloakUserInfo();
+        
+        if (userInfo) {
+          // Set API auth header for future backend calls
+          api.defaults.headers.common['Authorization'] = `Bearer ${keycloak.token}`;
+          
+          dispatch({
+            type: 'LOGIN_SUCCESS',
+            payload: {
+              user: userInfo,
+              token: keycloak.token
+            }
+          });
+        } else {
+          dispatch({ type: 'LOGIN_ERROR', payload: 'Failed to extract user info from token' });
         }
-      });
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
-      dispatch({
-        type: 'LOGIN_ERROR',
-        payload: error.response?.data?.message || 'Failed to fetch user profile'
-      });
+      } else {
+        dispatch({ type: 'SET_LOADING', payload: false });
+      }
     }
+  }, [keycloak?.authenticated, initialized, keycloak?.token]);
+
+  // Get user info from Keycloak token (no backend call needed)
+  const getKeycloakUserInfo = () => {
+    if (!keycloak?.tokenParsed) return null;
+    
+    const token = keycloak.tokenParsed;
+    
+    return {
+      id: token.sub,
+      username: token.preferred_username || token.email,
+      email: token.email,
+      firstName: token.given_name || '',
+      lastName: token.family_name || '',
+      fullName: token.name || `${token.given_name || ''} ${token.family_name || ''}`.trim(),
+      roles: [
+        ...(token.realm_access?.roles || []),
+        ...(token.resource_access?.['PMAL-client']?.roles || [])
+      ],
+      emailVerified: token.email_verified || false,
+      // Add any other fields you need from the token
+      company: token.company || '',
+      department: token.department || '',
+      userRole: token.user_role || 'Employee'
+    };
   };
 
-  const login = async (credentials, isAdmin = false) => {
+  // Keycloak-specific login function
+  const keycloakLogin = async (isAdmin = false) => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
       
-      const endpoint = isAdmin ? '/auth/login-admin' : '/auth/login-user';
-      const response = await api.post(endpoint, credentials);
-      
-      const { user, token } = response.data.data;
-      
-      // Store token in localStorage
-      localStorage.setItem('pmal_token', token);
-      
-      // Set API default auth header
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      
-      dispatch({
-        type: 'LOGIN_SUCCESS',
-        payload: { user, token }
+      if (!keycloak) {
+        throw new Error('Keycloak not initialized');
+      }
+
+      // Redirect to Keycloak login
+      await keycloak.login({
+        redirectUri: window.location.origin + '/dashboard',
+        prompt: 'login'
       });
       
-      return { success: true, user };
     } catch (error) {
-      const errorMessage = error.response?.data?.message || 'Login failed';
+      console.error('Keycloak login failed:', error);
       dispatch({
         type: 'LOGIN_ERROR',
-        payload: errorMessage
+        payload: 'Keycloak login failed'
       });
-      return { success: false, error: errorMessage };
+      throw error;
     }
   };
 
-  const register = async (userData) => {
+  // Keycloak-specific registration function
+  const keycloakRegister = async () => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
       
-      const response = await api.post('/auth/register', userData);
-      const { user, token } = response.data.data;
-      
-      // Store token in localStorage
-      localStorage.setItem('pmal_token', token);
-      
-      // Set API default auth header
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      
-      dispatch({
-        type: 'LOGIN_SUCCESS',
-        payload: { user, token }
+      if (!keycloak) {
+        throw new Error('Keycloak not initialized');
+      }
+
+      // Redirect to Keycloak registration
+      await keycloak.register({
+        redirectUri: window.location.origin + '/dashboard'
       });
       
-      return { success: true, user, message: response.data.message };
     } catch (error) {
-      const errorMessage = error.response?.data?.message || 'Registration failed';
+      console.error('Keycloak registration failed:', error);
       dispatch({
         type: 'LOGIN_ERROR',
-        payload: errorMessage
+        payload: 'Keycloak registration failed'
       });
-      return { success: false, error: errorMessage };
+      throw error;
     }
   };
 
   const logout = () => {
-    // Remove token from localStorage
-    localStorage.removeItem('pmal_token');
-    
     // Remove API default auth header
     delete api.defaults.headers.common['Authorization'];
     
     // Logout from Keycloak
     if (keycloak?.authenticated) {
-      keycloak.logout();
+      keycloak.logout({
+        redirectUri: window.location.origin
+      });
     }
     
     dispatch({ type: 'LOGOUT' });
   };
 
-  const updateProfile = async (userData) => {
-    try {
-      const response = await api.put(`/users/${state.user.id}`, userData);
-      dispatch({
-        type: 'UPDATE_USER',
-        payload: response.data.data.user
-      });
-      return { success: true, user: response.data.data.user };
-    } catch (error) {
-      return {
-        success: false,
-        error: error.response?.data?.message || 'Profile update failed'
-      };
+  // Check if user has specific roles
+  const hasRole = (role) => {
+    if (!keycloak?.authenticated || !keycloak.tokenParsed) {
+      return false;
     }
+    
+    const realmRoles = keycloak.tokenParsed.realm_access?.roles || [];
+    const clientRoles = keycloak.tokenParsed.resource_access?.['PMAL-client']?.roles || [];
+    
+    return realmRoles.includes(role) || clientRoles.includes(role);
   };
 
-  const changePassword = async (passwordData) => {
+  // Check if user is admin
+  const isAdmin = () => {
+    return hasRole('admin') || hasRole('pmal-admin') || hasRole('realm-admin');
+  };
+
+  // Update user profile (this would need backend integration)
+  const updateProfile = async (userData) => {
     try {
-      await api.put('/auth/change-password', passwordData);
-      return { success: true, message: 'Password changed successfully' };
+      // If you want to store additional profile data in your backend
+      const response = await api.put(`/users/${state.user.id}`, userData);
+      
+      // Update local state
+      dispatch({
+        type: 'UPDATE_USER',
+        payload: userData
+      });
+      
+      return { success: true, user: { ...state.user, ...userData } };
     } catch (error) {
-      return {
-        success: false,
-        error: error.response?.data?.message || 'Password change failed'
-      };
+      console.warn('Backend profile update failed, updating locally only:', error);
+      
+      // Even if backend fails, update local state
+      dispatch({
+        type: 'UPDATE_USER',
+        payload: userData
+      });
+      
+      return { success: true, user: { ...state.user, ...userData } };
     }
   };
 
@@ -190,13 +216,37 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: 'CLEAR_ERROR' });
   };
 
+  // Refresh token if needed
+  const refreshToken = async () => {
+    try {
+      if (keycloak?.authenticated) {
+        await keycloak.updateToken(30); // Refresh if expires in 30 seconds
+        api.defaults.headers.common['Authorization'] = `Bearer ${keycloak.token}`;
+        return keycloak.token;
+      }
+    } catch (error) {
+      console.error('Token refresh failed:', error);
+      logout();
+    }
+  };
+
   const value = {
+    // State
     ...state,
-    login,
-    register,
+    
+    // Keycloak specific
+    keycloak,
+    initialized,
+    keycloakLogin,
+    keycloakRegister,
+    hasRole,
+    isAdmin,
+    getKeycloakUserInfo,
+    refreshToken,
+    
+    // General auth functions
     logout,
     updateProfile,
-    changePassword,
     clearError
   };
 

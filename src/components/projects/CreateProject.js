@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import api from '../../services/api';
 
 const CreateProject = () => {
   const [step, setStep] = useState(1);
@@ -20,36 +23,36 @@ const CreateProject = () => {
   });
   const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
-  const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [newTag, setNewTag] = useState('');
-  const [newTeamMember, setNewTeamMember] = useState({ username: '', role: 'Member' });
+  const [submitError, setSubmitError] = useState('');
+
+  const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
 
   const phases = [
-    { value: 'Planning', icon: '📋', description: 'Initial project planning and requirements gathering' },
-    { value: 'Development', icon: '⚡', description: 'Active development and implementation phase' },
-    { value: 'Testing', icon: '🧪', description: 'Quality assurance and testing phase' },
-    { value: 'Deployment', icon: '🚀', description: 'Production deployment and rollout' },
-    { value: 'Maintenance', icon: '🔧', description: 'Ongoing maintenance and support' }
+    { value: 'Planning', description: 'Initial project planning and requirements gathering' },
+    { value: 'Development', description: 'Active development and implementation phase' },
+    { value: 'Testing', description: 'Quality assurance and testing phase' },
+    { value: 'Deployment', description: 'Production deployment and rollout' },
+    { value: 'Maintenance', description: 'Ongoing maintenance and support' }
   ];
 
   const priorities = [
-    { value: 'Low', color: 'from-green-500 to-emerald-500', icon: '🟢', description: 'Nice to have, flexible timeline' },
-    { value: 'Medium', color: 'from-yellow-500 to-orange-500', icon: '🟡', description: 'Standard priority project' },
-    { value: 'High', color: 'from-red-500 to-pink-500', icon: '🔴', description: 'Critical business priority' }
-  ];
-
-  const teamRoles = [
-    { value: 'Manager', icon: '👔', description: 'Project manager or team lead' },
-    { value: 'Member', icon: '👤', description: 'Regular team member' },
-    { value: 'Viewer', icon: '👁️', description: 'View-only access' }
+    { value: 'Low', color: 'from-green-500 to-emerald-500', description: 'Nice to have, flexible timeline' },
+    { value: 'Medium', color: 'from-yellow-500 to-orange-500', description: 'Standard priority project' },
+    { value: 'High', color: 'from-red-500 to-pink-500', description: 'Critical business priority' }
   ];
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
+
     // Set default start date to today
     const today = new Date().toISOString().split('T')[0];
     setFormData(prev => ({ ...prev, startDate: today }));
-  }, []);
+  }, [isAuthenticated, navigate]);
 
   const handleInputChange = (name, value) => {
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -57,6 +60,11 @@ const CreateProject = () => {
     // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
+    }
+    
+    // Clear submit error
+    if (submitError) {
+      setSubmitError('');
     }
   };
 
@@ -93,36 +101,6 @@ const CreateProject = () => {
     setStep(step - 1);
   };
 
-  const searchUsers = async (query) => {
-    if (query.length < 2) {
-      setSearchResults([]);
-      return;
-    }
-
-    setIsSearching(true);
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 800));
-      const mockUsers = [
-        { username: 'sarah.johnson', name: 'Sarah Johnson', role: 'Project Manager', avatar: '👩‍💼' },
-        { username: 'mike.chen', name: 'Mike Chen', role: 'Developer', avatar: '👨‍💻' },
-        { username: 'lisa.wang', name: 'Lisa Wang', role: 'Designer', avatar: '👩‍🎨' },
-        { username: 'alex.kim', name: 'Alex Kim', role: 'Security Expert', avatar: '👨‍🔒' }
-      ];
-      
-      const filtered = mockUsers.filter(user => 
-        user.username.toLowerCase().includes(query.toLowerCase()) ||
-        user.name.toLowerCase().includes(query.toLowerCase())
-      );
-      
-      setSearchResults(filtered);
-    } catch (error) {
-      console.error('Search error:', error);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
   const addTag = () => {
     if (newTag.trim() && !formData.tags.includes(newTag.trim())) {
       handleInputChange('tags', [...formData.tags, newTag.trim()]);
@@ -134,45 +112,65 @@ const CreateProject = () => {
     handleInputChange('tags', formData.tags.filter(tag => tag !== tagToRemove));
   };
 
-  const addTeamMember = (user) => {
-    const member = {
-      username: user.username,
-      name: user.name,
-      role: newTeamMember.role,
-      avatar: user.avatar
-    };
-    
-    if (!formData.teamMembers.find(m => m.username === user.username)) {
-      handleInputChange('teamMembers', [...formData.teamMembers, member]);
-      setNewTeamMember({ username: '', role: 'Member' });
-      setSearchResults([]);
-    }
-  };
-
-  const removeTeamMember = (username) => {
-    handleInputChange('teamMembers', formData.teamMembers.filter(m => m.username !== username));
-  };
-
   const handleSubmit = async () => {
     if (!validateStep(3)) return;
 
     setIsLoading(true);
+    setSubmitError('');
+
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      console.log('Creating project:', formData);
+      // Prepare data for API
+      const projectData = {
+        name: formData.name.trim(),
+        description: formData.description.trim(),
+        phase: formData.phase,
+        startDate: formData.startDate,
+        endDate: formData.endDate || undefined,
+        priority: formData.priority,
+        budget: formData.budget ? parseFloat(formData.budget) : undefined,
+        managerUsername: formData.managerUsername.trim() || undefined,
+        teamMembers: formData.teamMembers,
+        tags: formData.tags,
+        objectives: formData.objectives.trim() || undefined,
+        expectedOutcomes: formData.expectedOutcomes.trim() || undefined,
+        risks: formData.risks.trim() || undefined,
+        constraints: formData.constraints.trim() || undefined
+      };
+
+      // Call API to create project
+      const response = await api.post('/projects', projectData);
       
-      // Redirect to project dashboard
-      window.location.href = '/projects';
+      if (response.data.success) {
+        console.log('Project created successfully:', response.data.data.project);
+        
+        // Redirect to the new project or projects list
+        const projectId = response.data.data.project._id;
+        navigate(`/projects/${projectId}`, { 
+          state: { message: 'Project created successfully!' }
+        });
+      } else {
+        throw new Error(response.data.message || 'Failed to create project');
+      }
+      
     } catch (error) {
       console.error('Project creation failed:', error);
+      
+      let errorMessage = 'Failed to create project. Please try again.';
+      
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      setSubmitError(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleCancel = () => {
-    window.location.href = '/projects';
+    navigate('/projects');
   };
 
   return (
@@ -190,6 +188,11 @@ const CreateProject = () => {
             <div>
               <h1 className="text-4xl font-bold text-gray-900">Create New Project</h1>
               <p className="text-gray-600">Set up your project for assessment and tracking</p>
+              {user && (
+                <p className="text-sm text-blue-600 mt-1">
+                  Creating as: {user.fullName || user.username}
+                </p>
+              )}
             </div>
           </div>
 
@@ -225,6 +228,16 @@ const CreateProject = () => {
       {/* Form Content */}
       <div className="max-w-4xl mx-auto px-6 py-8">
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
+          
+          {/* Submit Error */}
+          {submitError && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+              <div className="flex items-center">
+                <span className="text-red-500 mr-2">⚠️</span>
+                <span className="text-red-700">{submitError}</span>
+              </div>
+            </div>
+          )}
           
           {/* Step 1: Project Details */}
           {step === 1 && (
@@ -301,9 +314,8 @@ const CreateProject = () => {
                           className="sr-only"
                         />
                         <div className="text-center">
-                          <div className="text-2xl mb-2">{phase.icon}</div>
-                          <div className="font-semibold text-gray-900 text-sm">{phase.value}</div>
-                          <div className="text-xs text-gray-500 mt-1">{phase.description}</div>
+                          <div className="font-semibold text-gray-900 text-sm mb-1">{phase.value}</div>
+                          <div className="text-xs text-gray-500">{phase.description}</div>
                         </div>
                         {formData.phase === phase.value && (
                           <div className="absolute top-2 right-2 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
@@ -341,14 +353,9 @@ const CreateProject = () => {
                           onChange={(e) => handleInputChange('priority', e.target.value)}
                           className="sr-only"
                         />
-                        <div className="flex items-center space-x-3">
-                          <div className={`w-12 h-12 rounded-xl bg-gradient-to-r ${priority.color} flex items-center justify-center text-white text-xl`}>
-                            {priority.icon}
-                          </div>
-                          <div className="flex-1">
-                            <div className="font-semibold text-gray-900">{priority.value}</div>
-                            <div className="text-xs text-gray-500">{priority.description}</div>
-                          </div>
+                        <div className="text-center">
+                          <div className="font-semibold text-gray-900 mb-1">{priority.value}</div>
+                          <div className="text-xs text-gray-500">{priority.description}</div>
                         </div>
                         {formData.priority === priority.value && (
                           <div className="absolute top-2 right-2 w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
@@ -446,49 +453,21 @@ const CreateProject = () => {
                 {/* Manager Username */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-3">
-                    Project Manager Username
+                    Project Manager Username (Optional)
                   </label>
                   <input
                     type="text"
                     value={formData.managerUsername}
-                    onChange={(e) => {
-                      handleInputChange('managerUsername', e.target.value);
-                      searchUsers(e.target.value);
-                    }}
+                    onChange={(e) => handleInputChange('managerUsername', e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-300"
-                    placeholder="Search by username..."
+                    placeholder="Username of project manager"
                   />
-                  
-                  {isSearching && (
-                    <div className="mt-2 text-sm text-blue-600">Searching users...</div>
-                  )}
-                  
-                  {searchResults.length > 0 && formData.managerUsername && (
-                    <div className="mt-2 border border-gray-200 rounded-xl max-h-40 overflow-y-auto">
-                      {searchResults.map((user) => (
-                        <div
-                          key={user.username}
-                          onClick={() => {
-                            handleInputChange('managerUsername', user.username);
-                            setSearchResults([]);
-                          }}
-                          className="p-3 hover:bg-gray-50 cursor-pointer flex items-center space-x-3"
-                        >
-                          <span className="text-xl">{user.avatar}</span>
-                          <div>
-                            <div className="font-medium text-gray-900">{user.name}</div>
-                            <div className="text-sm text-gray-500">@{user.username}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
 
                 {/* Project Objectives */}
                 <div className="lg:col-span-2">
                   <label className="block text-sm font-semibold text-gray-900 mb-3">
-                    Project Objectives
+                    Project Objectives (Optional)
                   </label>
                   <textarea
                     value={formData.objectives}
@@ -521,15 +500,15 @@ const CreateProject = () => {
           {step === 3 && (
             <div className="space-y-8">
               <div className="text-center mb-8">
-                <h2 className="text-3xl font-bold text-gray-900 mb-2">Team & Review</h2>
-                <p className="text-gray-600">Add team members and review your project details</p>
+                <h2 className="text-3xl font-bold text-gray-900 mb-2">Tags & Review</h2>
+                <p className="text-gray-600">Add tags and review your project details</p>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 gap-8">
                 {/* Tags */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-900 mb-3">
-                    Project Tags
+                    Project Tags (Optional)
                   </label>
                   <div className="flex space-x-2 mb-3">
                     <input
@@ -565,82 +544,8 @@ const CreateProject = () => {
                   </div>
                 </div>
 
-                {/* Team Members */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-900 mb-3">
-                    Team Members
-                  </label>
-                  <div className="space-y-3">
-                    <div className="flex space-x-2">
-                      <input
-                        type="text"
-                        value={newTeamMember.username}
-                        onChange={(e) => {
-                          setNewTeamMember(prev => ({ ...prev, username: e.target.value }));
-                          searchUsers(e.target.value);
-                        }}
-                        className="flex-1 px-4 py-2 border border-gray-300 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-300"
-                        placeholder="Search username..."
-                      />
-                      <select
-                        value={newTeamMember.role}
-                        onChange={(e) => setNewTeamMember(prev => ({ ...prev, role: e.target.value }))}
-                        className="px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-300"
-                      >
-                        {teamRoles.map((role) => (
-                          <option key={role.value} value={role.value}>
-                            {role.value}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {searchResults.length > 0 && newTeamMember.username && (
-                      <div className="border border-gray-200 rounded-xl max-h-32 overflow-y-auto">
-                        {searchResults.map((user) => (
-                          <div
-                            key={user.username}
-                            onClick={() => addTeamMember(user)}
-                            className="p-3 hover:bg-gray-50 cursor-pointer flex items-center space-x-3"
-                          >
-                            <span className="text-xl">{user.avatar}</span>
-                            <div>
-                              <div className="font-medium text-gray-900">{user.name}</div>
-                              <div className="text-sm text-gray-500">@{user.username}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Added Team Members */}
-                    <div className="space-y-2">
-                      {formData.teamMembers.map((member, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between p-3 bg-gray-50 rounded-xl"
-                        >
-                          <div className="flex items-center space-x-3">
-                            <span className="text-xl">{member.avatar}</span>
-                            <div>
-                              <div className="font-medium text-gray-900">{member.name}</div>
-                              <div className="text-sm text-gray-500">@{member.username} • {member.role}</div>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => removeTeamMember(member.username)}
-                            className="text-red-500 hover:text-red-700 p-1"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
                 {/* Project Summary */}
-                <div className="lg:col-span-2">
+                <div>
                   <h3 className="text-xl font-semibold text-gray-900 mb-4">Project Summary</h3>
                   <div className="bg-gray-50 rounded-xl p-6 space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
@@ -678,10 +583,6 @@ const CreateProject = () => {
                           <span className="ml-2 text-gray-900">@{formData.managerUsername}</span>
                         </div>
                       )}
-                      <div>
-                        <span className="font-medium text-gray-700">Team Size:</span>
-                        <span className="ml-2 text-gray-900">{formData.teamMembers.length} members</span>
-                      </div>
                     </div>
                     
                     <div>
@@ -730,7 +631,7 @@ const CreateProject = () => {
                       <span>Creating Project...</span>
                     </div>
                   ) : (
-                    'Create Project ✨'
+                    'Create Project'
                   )}
                 </button>
               </div>

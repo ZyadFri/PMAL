@@ -8,10 +8,10 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
-    "autoprefixer": "^10.4.21",
     "axios": "^1.10.0",
+    "dotenv": "^17.2.0",
     "keycloak-js": "^26.2.0",
-    "postcss": "^8.5.6",
+    "mongoose": "^8.16.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.3",
@@ -22,7 +22,12 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "nodemon src/server/server.js",
+    "client": "cd src && npm start",
+    "seed:assessment": "node scripts/seedQuickAssessment.js",
+    "seed:dev": "NODE_ENV=development node scripts/seedQuickAssessment.js"
   },
   "eslintConfig": {
     "extends": [
@@ -47,6 +52,10 @@
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/postcss": "^4.1.11",
     "@tailwindcss/typography": "^0.5.16",
-    "tailwindcss": "^3.3.3"
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^7.6.0",
+    "nodemon": "^2.0.20",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17"
   }
 }

@@ -4,17 +4,27 @@ import { useAuth } from '../../contexts/AuthContext';
 import LoadingSpinner from './LoadingSpinner';
 
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading, user, keycloak, initialized } = useAuth();
 
-  if (isLoading) {
+  // Show loading while Keycloak is initializing or auth is loading
+  if (isLoading || !initialized) {
     return <LoadingSpinner />;
   }
 
+  // If not authenticated, redirect to login
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (user && !user.isActivated) {
+  // Check if Keycloak user is properly authenticated and enabled
+  if (keycloak && keycloak.authenticated) {
+    // If we have a Keycloak session, the user is activated by definition
+    // (Keycloak wouldn't let them login if they weren't enabled)
+    return children;
+  }
+
+  // For non-Keycloak users (if you support both), check the old way
+  if (user && user.isActivated === false) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 flex items-center justify-center">
         <div className="max-w-md mx-auto p-8 bg-white rounded-2xl shadow-lg text-center">
@@ -36,6 +46,7 @@ const ProtectedRoute = ({ children }) => {
     );
   }
 
+  // If we reach here and have authentication, allow access
   return children;
 };
 

@@ -1,16 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const Login = () => {
-  const [formData, setFormData] = useState({
-    username: '',
-    password: ''
-  });
-  const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [loginType, setLoginType] = useState('user'); // 'user' or 'admin'
-  const [showPassword, setShowPassword] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const navigate = useNavigate();
+  const { login, keycloakLogin } = useAuth();
 
   useEffect(() => {
     setIsVisible(true);
@@ -24,65 +22,21 @@ const Login = () => {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    
-    // Clear error when user starts typing
-    if (errors[name]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
+  const handleNavigation = (path) => {
+    console.log(`Navigate to: ${path}`);
+    navigate(path);
   };
 
-  const validateForm = () => {
-    const newErrors = {};
-
-    if (!formData.username.trim()) {
-      newErrors.username = 'Username or email is required';
-    }
-
-    if (!formData.password) {
-      newErrors.password = 'Password is required';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!validateForm()) {
-      return;
-    }
-
+  const handleKeycloakLogin = async () => {
     setIsLoading(true);
-    
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      console.log('Login data:', { ...formData, loginType });
-      // Handle successful login
+      await keycloakLogin();
+      // Navigation will be handled by AuthContext after successful login
     } catch (error) {
-      console.error('Login failed:', error);
-      setErrors({ general: 'Invalid credentials. Please try again.' });
+      console.error('Keycloak login failed:', error);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleNavigation = (path) => {
-    console.log(`Navigate to: ${path}`);
-  };
-
-  const handleForgotPassword = () => {
-    console.log('Forgot password clicked');
   };
 
   return (
@@ -171,113 +125,28 @@ const Login = () => {
           </div>
         </div>
 
-        {/* Form Container */}
+        {/* Keycloak Login Container */}
         <div className="bg-gray-800/50 backdrop-blur-lg border border-gray-700/50 rounded-2xl p-8 shadow-2xl">
-          {errors.general && (
-            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
-              <div className="flex items-center">
-                <svg className="w-5 h-5 text-red-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-                <span className="text-red-400 text-sm">{errors.general}</span>
-              </div>
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4 transform hover:scale-110 transition-all duration-300">
+              <span className="text-white font-bold text-2xl">K</span>
             </div>
-          )}
+            <h2 className="text-2xl font-semibold text-white mb-2">Secure Authentication</h2>
+            <p className="text-gray-400 text-sm">
+              {loginType === 'admin' 
+                ? 'Sign in with your admin credentials via Keycloak' 
+                : 'Sign in with your account via Keycloak'
+              }
+            </p>
+          </div>
 
           <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Username or Email
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  name="username"
-                  value={formData.username}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-3 pl-12 bg-gray-900/50 border rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 transition-all duration-300 ${
-                    errors.username 
-                      ? 'border-red-500 focus:ring-red-500/50' 
-                      : 'border-gray-600 focus:border-blue-500 focus:ring-blue-500/50'
-                  }`}
-                  placeholder="Enter your username or email"
-                />
-                <div className="absolute left-4 top-1/2 transform -translate-y-1/2">
-                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                </div>
-              </div>
-              {errors.username && (
-                <p className="text-red-400 text-sm mt-1 animate-shake">{errors.username}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  name="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-3 pl-12 pr-12 bg-gray-900/50 border rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 transition-all duration-300 ${
-                    errors.password 
-                      ? 'border-red-500 focus:ring-red-500/50' 
-                      : 'border-gray-600 focus:border-blue-500 focus:ring-blue-500/50'
-                  }`}
-                  placeholder="Enter your password"
-                />
-                <div className="absolute left-4 top-1/2 transform -translate-y-1/2">
-                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors duration-300"
-                >
-                  {showPassword ? (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-              {errors.password && (
-                <p className="text-red-400 text-sm mt-1 animate-shake">{errors.password}</p>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between">
-              <label className="flex items-center">
-                <input type="checkbox" className="w-4 h-4 text-blue-600 bg-gray-900 border-gray-600 rounded focus:ring-blue-500 focus:ring-2" />
-                <span className="ml-2 text-sm text-gray-300">Remember me</span>
-              </label>
-              
-              <button
-                type="button"
-                onClick={handleForgotPassword}
-                className="text-sm text-blue-400 hover:text-blue-300 transition-colors duration-300 relative group"
-              >
-                Forgot password?
-                <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-blue-400 transition-all duration-300 group-hover:w-full" />
-              </button>
-            </div>
-
+            {/* Main Keycloak Login Button */}
             <button
-              type="submit"
+              type="button"
+              onClick={handleKeycloakLogin}
               disabled={isLoading}
-              onClick={handleSubmit}
-              className={`w-full px-6 py-3 font-semibold rounded-xl transform transition-all duration-300 shadow-lg relative overflow-hidden ${
+              className={`w-full px-6 py-4 font-semibold rounded-xl transform transition-all duration-300 shadow-lg relative overflow-hidden ${
                 loginType === 'admin'
                   ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:shadow-purple-500/25'
                   : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:shadow-blue-500/25'
@@ -285,13 +154,18 @@ const Login = () => {
             >
               {isLoading ? (
                 <div className="flex items-center justify-center">
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                  Signing In...
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-3" />
+                  Authenticating...
                 </div>
               ) : (
-                <span className="relative z-10">
-                  {loginType === 'admin' ? 'Sign In as Admin' : 'Sign In'}
-                </span>
+                <div className="flex items-center justify-center">
+                  <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center mr-3 group-hover:scale-110 transition-transform duration-300">
+                    <span className="text-white font-bold text-sm">🔐</span>
+                  </div>
+                  <span className="relative z-10">
+                    {loginType === 'admin' ? 'Sign In as Admin' : 'Sign In with Keycloak'}
+                  </span>
+                </div>
               )}
               {!isLoading && (
                 <div className={`absolute inset-0 opacity-0 hover:opacity-100 transition-opacity duration-300 ${
@@ -301,29 +175,33 @@ const Login = () => {
                 }`} />
               )}
             </button>
-          </div>
 
-          {/* Alternative Login Methods */}
-          <div className="mt-8">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-600" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-gray-800 text-gray-400">Or continue with</span>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <button
-                type="button"
-                className="w-full flex items-center justify-center px-6 py-3 border border-gray-600 rounded-xl text-gray-300 hover:bg-gray-700/50 hover:border-gray-500 transition-all duration-300 group"
-              >
-                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center mr-3 group-hover:scale-110 transition-transform duration-300">
-                  <span className="text-white font-bold text-sm">K</span>
-                </div>
-                Sign in with Keycloak
-              </button>
+            {/* Benefits Section */}
+            <div className="bg-gray-900/30 rounded-xl p-4 border border-gray-700/30">
+              <h3 className="text-white font-semibold mb-3 flex items-center">
+                <span className="w-2 h-2 bg-green-400 rounded-full mr-2 animate-pulse"></span>
+                Secure & Reliable
+              </h3>
+              <ul className="space-y-2 text-sm text-gray-300">
+                <li className="flex items-center">
+                  <svg className="w-4 h-4 text-green-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Enterprise-grade security
+                </li>
+                <li className="flex items-center">
+                  <svg className="w-4 h-4 text-green-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Single Sign-On (SSO)
+                </li>
+                <li className="flex items-center">
+                  <svg className="w-4 h-4 text-green-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Multi-factor authentication
+                </li>
+              </ul>
             </div>
           </div>
         </div>
@@ -362,18 +240,8 @@ const Login = () => {
           50% { transform: translateY(-15px) rotate(180deg); }
         }
         
-        @keyframes shake {
-          0%, 100% { transform: translateX(0); }
-          25% { transform: translateX(-5px); }
-          75% { transform: translateX(5px); }
-        }
-        
         .animate-float {
           animation: float linear infinite;
-        }
-        
-        .animate-shake {
-          animation: shake 0.5s ease-in-out;
         }
       `}</style>
     </div>

@@ -7,7 +7,7 @@ const answerSchema = new mongoose.Schema({
     required: true
   },
   selectedOption: {
-    optionId: { type: mongoose.Schema.Types.ObjectId },
+    _id: { type: mongoose.Schema.Types.ObjectId },
     text: { type: String },
     value: { type: Number }
   },
@@ -20,7 +20,7 @@ const answerSchema = new mongoose.Schema({
     type: Number,
     required: true,
     min: 0,
-    max: 5
+    max: 3 // Changed to 3 for French system
   },
   timeSpent: {
     type: Number,
@@ -41,8 +41,8 @@ const categoryScoreSchema = new mongoose.Schema({
   score: {
     type: Number,
     required: true,
-    min: 0,
-    max: 5
+    min: 0
+    // Removed max limit since this is the total sum of category answers
   },
   maxPossibleScore: {
     type: Number,
@@ -115,7 +115,7 @@ const assessmentSchema = new mongoose.Schema({
     type: Number,
     default: 0,
     min: 0,
-    max: 5
+    max: 3 // Changed to 3 for French system
   },
   overallPercentage: {
     type: Number,
@@ -125,8 +125,8 @@ const assessmentSchema = new mongoose.Schema({
   },
   maturityLevel: {
     type: String,
-    enum: ['Level 1: Initial', 'Level 2: Repeatable', 'Level 3: Defined', 'Level 4: Managed', 'Level 5: Optimized'],
-    default: 'Level 1: Initial'
+    enum: ['M1', 'M2', 'M3'],
+    default: 'M1'
   },
   weakestCategory: {
     type: mongoose.Schema.Types.ObjectId,
@@ -229,24 +229,31 @@ assessmentSchema.methods.addAnswer = function(questionId, selectedOption, textAn
   return this.save();
 };
 
-// Method to calculate category scores
+// Method to calculate category scores - Updated for French system
 assessmentSchema.methods.calculateCategoryScores = async function() {
   const Category = mongoose.model('Category');
+  const Question = mongoose.model('Question');
+  
   const categories = await Category.find({ isActive: true });
 
   this.categoryScores = [];
   let totalScore = 0;
-  let totalMaxScore = 0;
+  let totalQuestions = 0;
 
   for (const category of categories) {
-    const categoryAnswers = this.answers.filter(answer => 
-      answer.question && answer.question.category && 
-      answer.question.category.toString() === category._id.toString()
-    );
+    // Get category questions
+    const categoryQuestions = await Question.find({
+      category: category._id,
+      isActive: true
+    });
+
+    const categoryAnswers = this.answers.filter(answer => {
+      return categoryQuestions.some(q => q._id.toString() === answer.question.toString());
+    });
 
     if (categoryAnswers.length > 0) {
       const categoryScore = categoryAnswers.reduce((sum, answer) => sum + answer.score, 0);
-      const maxPossibleScore = categoryAnswers.length * 5;
+      const maxPossibleScore = categoryAnswers.length * 3; // Max 3 per question in French system
       const percentage = (categoryScore / maxPossibleScore) * 100;
 
       this.categoryScores.push({
@@ -259,16 +266,16 @@ assessmentSchema.methods.calculateCategoryScores = async function() {
       });
 
       totalScore += categoryScore;
-      totalMaxScore += maxPossibleScore;
+      totalQuestions += categoryAnswers.length;
     }
   }
 
-  // Calculate overall score
-  this.overallScore = totalMaxScore > 0 ? (totalScore / totalMaxScore) * 5 : 0;
-  this.overallPercentage = totalMaxScore > 0 ? (totalScore / totalMaxScore) * 100 : 0;
+  // Calculate overall score (average of all answers, max 3)
+  this.overallScore = totalQuestions > 0 ? totalScore / totalQuestions : 0;
+  this.overallPercentage = totalQuestions > 0 ? (totalScore / (totalQuestions * 3)) * 100 : 0;
 
-  // Determine maturity level
-  this.maturityLevel = this.getMaturityLevel(this.overallPercentage);
+  // Determine maturity level based on French system
+  this.maturityLevel = this.getMaturityLevel(this.overallScore);
 
   // Find weakest and strongest categories
   if (this.categoryScores.length > 0) {
@@ -280,13 +287,11 @@ assessmentSchema.methods.calculateCategoryScores = async function() {
   return this.save();
 };
 
-// Method to determine maturity level based on percentage
-assessmentSchema.methods.getMaturityLevel = function(percentage) {
-  if (percentage >= 90) return 'Level 5: Optimized';
-  if (percentage >= 75) return 'Level 4: Managed';
-  if (percentage >= 60) return 'Level 3: Defined';
-  if (percentage >= 40) return 'Level 2: Repeatable';
-  return 'Level 1: Initial';
+// Method to determine maturity level based on French system
+assessmentSchema.methods.getMaturityLevel = function(score) {
+  if (score >= 2.4) return 'M3'; // Maturité élevée / projet bien structuré
+  if (score >= 1.7) return 'M2'; // Maturité moyenne
+  return 'M1'; // Maturité très faible
 };
 
 // Method to complete assessment
@@ -304,36 +309,54 @@ assessmentSchema.methods.completeAssessment = async function() {
   return this.save();
 };
 
-// Method to generate feedback
+// Method to generate feedback - Updated for French system
 assessmentSchema.methods.generateFeedback = function() {
-  const percentage = this.overallPercentage;
+  const score = this.overallScore;
 
-  // General feedback based on score
-  if (percentage >= 80) {
-    this.feedback.summary = "Excellent performance! Your project demonstrates high maturity levels across most categories.";
-    this.feedback.strengths.push("Strong project management practices");
-    this.feedback.strengths.push("Well-defined processes and procedures");
-    this.feedback.nextSteps.push("Focus on continuous improvement and optimization");
-  } else if (percentage >= 60) {
-    this.feedback.summary = "Good performance with room for improvement. Your project shows solid foundations with some areas needing attention.";
-    this.feedback.improvements.push("Enhance documentation and standardization");
-    this.feedback.nextSteps.push("Implement regular review processes");
-  } else if (percentage >= 40) {
-    this.feedback.summary = "Fair performance. Your project has basic structures in place but requires significant improvements.";
-    this.feedback.improvements.push("Establish formal processes and procedures");
-    this.feedback.improvements.push("Improve team communication and coordination");
-    this.feedback.nextSteps.push("Prioritize training and skill development");
-  } else {
-    this.feedback.summary = "Needs significant improvement. Your project requires immediate attention across multiple areas.";
-    this.feedback.improvements.push("Implement basic project management practices");
-    this.feedback.improvements.push("Establish clear roles and responsibilities");
-    this.feedback.nextSteps.push("Consider project management training");
-    this.feedback.nextSteps.push("Seek expert consultation");
+  // Clear existing feedback
+  this.feedback = {
+    strengths: [],
+    improvements: [],
+    nextSteps: [],
+    summary: ''
+  };
+
+  // Generate feedback based on French maturity levels
+  if (score >= 2.4) { // M3 - Maturité élevée
+    this.feedback.summary = "Excellente performance ! Votre projet démontre un niveau de maturité élevé et une structure bien définie.";
+    this.feedback.strengths.push("Processus de gestion de projet robustes");
+    this.feedback.strengths.push("Documentation complète et structurée");
+    this.feedback.strengths.push("Gouvernance claire et effective");
+    this.feedback.nextSteps.push("Continuer l'optimisation et l'amélioration continue");
+    this.feedback.nextSteps.push("Partager les bonnes pratiques avec d'autres projets");
+  } else if (score >= 1.7) { // M2 - Maturité moyenne
+    this.feedback.summary = "Performance correcte avec des fondations solides, mais des améliorations sont possibles dans certains domaines.";
+    this.feedback.strengths.push("Structure de base du projet établie");
+    this.feedback.strengths.push("Processus partiellement définis");
+    this.feedback.improvements.push("Renforcer la documentation et la standardisation");
+    this.feedback.improvements.push("Améliorer la communication et la coordination");
+    this.feedback.nextSteps.push("Mettre en place des processus de révision réguliers");
+    this.feedback.nextSteps.push("Développer les compétences de l'équipe");
+  } else { // M1 - Maturité très faible
+    this.feedback.summary = "Le projet nécessite des améliorations significatives dans plusieurs domaines critiques.";
+    this.feedback.improvements.push("Établir des processus de gestion de projet de base");
+    this.feedback.improvements.push("Définir clairement les rôles et responsabilités");
+    this.feedback.improvements.push("Mettre en place une gouvernance projet structurée");
+    this.feedback.improvements.push("Améliorer la documentation et le suivi");
+    this.feedback.nextSteps.push("Formation en gestion de projet recommandée");
+    this.feedback.nextSteps.push("Considérer l'assistance d'experts externes");
+    this.feedback.nextSteps.push("Prioriser la mise en place de processus fondamentaux");
   }
 
-  // Category-specific feedback
-  if (this.weakestCategory) {
-    this.feedback.improvements.push(`Focus on improving ${this.weakestCategory.name} practices`);
+  // Add category-specific feedback
+  if (this.categoryScores.length > 0) {
+    const weakestCat = this.categoryScores.find(cs => 
+      cs.category.toString() === this.weakestCategory?.toString()
+    );
+    
+    if (weakestCat && weakestCat.percentage < 60) {
+      this.feedback.improvements.push(`Attention particulière requise pour la catégorie la plus faible`);
+    }
   }
 };
 

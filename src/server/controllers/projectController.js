@@ -6,7 +6,7 @@ const { Project, User, Assessment } = require('../models');
 const getProjects = async (req, res) => {
   try {
     const { page = 1, limit = 10, status, phase, search } = req.query;
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
 
     // Build filter object
     const filter = {
@@ -40,7 +40,6 @@ const getProjects = async (req, res) => {
       .populate('owner', 'firstName lastName email userRole')
       .populate('manager', 'firstName lastName email userRole')
       .populate('team.user', 'firstName lastName email userRole')
-      .populate('weakestCategory', 'name code')
       .sort(options.sort)
       .limit(options.limit * 1)
       .skip((options.page - 1) * options.limit);
@@ -75,16 +74,13 @@ const getProjects = async (req, res) => {
 const getProjectById = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
 
     const project = await Project.findById(id)
       .populate('owner', 'firstName lastName email userRole')
       .populate('manager', 'firstName lastName email userRole')
       .populate('team.user', 'firstName lastName email userRole')
-      .populate('assessmentHistory')
-      .populate('quickAssessment.weakestCategory', 'name code color')
-      .populate('deepAssessment.currentCategory', 'name code')
-      .populate('deepAssessment.completedCategories', 'name code');
+      .populate('assessmentHistory');
 
     if (!project) {
       return res.status(404).json({
@@ -94,9 +90,9 @@ const getProjectById = async (req, res) => {
     }
 
     // Check if user has access to this project
-    const hasAccess = project.owner._id.toString() === userId ||
-                     (project.manager && project.manager._id.toString() === userId) ||
-                     project.team.some(member => member.user._id.toString() === userId) ||
+    const hasAccess = project.owner._id.toString() === userId.toString() ||
+                     (project.manager && project.manager._id.toString() === userId.toString()) ||
+                     project.team.some(member => member.user._id.toString() === userId.toString()) ||
                      req.user.isAdmin;
 
     if (!hasAccess) {
@@ -125,6 +121,12 @@ const getProjectById = async (req, res) => {
 // @access  Private
 const createProject = async (req, res) => {
   try {
+    console.log('🛠️ DEBUG - req.user:', {
+      id: req.user.id,
+      _id: req.user._id,
+      email: req.user.email
+    });
+
     const {
       name,
       description,
@@ -138,7 +140,17 @@ const createProject = async (req, res) => {
       tags
     } = req.body;
 
-    const userId = req.user.id;
+    // Use _id instead of id for Keycloak users
+    const userId = req.user._id || req.user.id;
+    console.log('🔑 Using userId:', userId);
+    console.log('🔍 UserId type:', typeof userId, 'UserId value:', userId);
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID not found in request'
+      });
+    }
 
     // Check if manager username exists (if provided)
     let managerId = null;
@@ -181,6 +193,8 @@ const createProject = async (req, res) => {
       }
     }
 
+    console.log('📝 Creating project with owner:', userId);
+
     // Create project
     const project = new Project({
       name,
@@ -192,7 +206,7 @@ const createProject = async (req, res) => {
       budget: budget || 0,
       owner: userId,
       manager: managerId,
-      team: validatedTeamMembers,
+      team: [], // Start with empty team, we'll add members below
       tags: tags || []
     });
 
@@ -208,8 +222,14 @@ const createProject = async (req, res) => {
       }
     });
 
+    console.log('👥 Team after adding owner:', project.team);
+    console.log('🏠 Project owner field:', project.owner);
+
+    // Add validated team members
+    project.team.push(...validatedTeamMembers);
+
     // Add manager to team if different from owner
-    if (managerId && managerId.toString() !== userId) {
+    if (managerId && managerId.toString() !== userId.toString()) {
       project.team.push({
         user: managerId,
         role: 'Manager',
@@ -222,7 +242,9 @@ const createProject = async (req, res) => {
       });
     }
 
+    console.log('💾 Saving project...');
     await project.save();
+    console.log('✅ Project saved successfully with ID:', project._id);
 
     // Update user's projects array
     await User.findByIdAndUpdate(userId, {
@@ -241,6 +263,8 @@ const createProject = async (req, res) => {
       .populate('owner', 'firstName lastName email userRole')
       .populate('manager', 'firstName lastName email userRole')
       .populate('team.user', 'firstName lastName email userRole');
+
+    console.log('🎉 Project creation completed successfully');
 
     res.status(201).json({
       success: true,
@@ -263,7 +287,7 @@ const createProject = async (req, res) => {
 const updateProject = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
     const updateData = req.body;
 
     // Find project
@@ -277,11 +301,11 @@ const updateProject = async (req, res) => {
 
     // Check permissions
     const teamMember = project.team.find(member => 
-      member.user.toString() === userId
+      member.user.toString() === userId.toString()
     );
     
-    const canEdit = project.owner.toString() === userId ||
-                   (project.manager && project.manager.toString() === userId) ||
+    const canEdit = project.owner.toString() === userId.toString() ||
+                   (project.manager && project.manager.toString() === userId.toString()) ||
                    (teamMember && teamMember.permissions.canEdit) ||
                    req.user.isAdmin;
 
@@ -342,7 +366,7 @@ const addTeamMember = async (req, res) => {
   try {
     const { id } = req.params;
     const { username, role } = req.body;
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
 
     // Find project
     const project = await Project.findById(id);
@@ -355,11 +379,11 @@ const addTeamMember = async (req, res) => {
 
     // Check permissions
     const teamMember = project.team.find(member => 
-      member.user.toString() === userId
+      member.user.toString() === userId.toString()
     );
     
-    const canManageTeam = project.owner.toString() === userId ||
-                         (project.manager && project.manager.toString() === userId) ||
+    const canManageTeam = project.owner.toString() === userId.toString() ||
+                         (project.manager && project.manager.toString() === userId.toString()) ||
                          (teamMember && teamMember.permissions.canManageTeam) ||
                          req.user.isAdmin;
 
@@ -423,7 +447,7 @@ const addTeamMember = async (req, res) => {
 const removeTeamMember = async (req, res) => {
   try {
     const { id, memberId } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
 
     // Find project
     const project = await Project.findById(id);
@@ -436,11 +460,11 @@ const removeTeamMember = async (req, res) => {
 
     // Check permissions
     const teamMember = project.team.find(member => 
-      member.user.toString() === userId
+      member.user.toString() === userId.toString()
     );
     
-    const canManageTeam = project.owner.toString() === userId ||
-                         (project.manager && project.manager.toString() === userId) ||
+    const canManageTeam = project.owner.toString() === userId.toString() ||
+                         (project.manager && project.manager.toString() === userId.toString()) ||
                          (teamMember && teamMember.permissions.canManageTeam) ||
                          req.user.isAdmin;
 
@@ -482,7 +506,7 @@ const removeTeamMember = async (req, res) => {
 const deleteProject = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
 
     // Find project
     const project = await Project.findById(id);
@@ -494,7 +518,7 @@ const deleteProject = async (req, res) => {
     }
 
     // Only owner or admin can delete project
-    if (project.owner.toString() !== userId && !req.user.isAdmin) {
+    if (project.owner.toString() !== userId.toString() && !req.user.isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'Only project owner or admin can delete project'
@@ -545,7 +569,7 @@ const toggleArchiveProject = async (req, res) => {
   try {
     const { id } = req.params;
     const { isArchived } = req.body;
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
 
     // Find project
     const project = await Project.findById(id);
@@ -557,7 +581,7 @@ const toggleArchiveProject = async (req, res) => {
     }
 
     // Only owner or admin can archive project
-    if (project.owner.toString() !== userId && !req.user.isAdmin) {
+    if (project.owner.toString() !== userId.toString() && !req.user.isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'Only project owner or admin can archive project'
@@ -588,7 +612,7 @@ const toggleArchiveProject = async (req, res) => {
 // @access  Private
 const getProjectStats = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
 
     // User's projects filter
     const userProjectsFilter = {

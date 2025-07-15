@@ -6,7 +6,7 @@ const { Assessment, Project, Question, Category, User } = require('../models');
 const startAssessment = async (req, res) => {
   try {
     const { projectId, type } = req.body;
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
 
     // Validate project exists and user has access
     const project = await Project.findById(projectId);
@@ -18,10 +18,10 @@ const startAssessment = async (req, res) => {
     }
 
     // Check if user has assessment permission
-    const hasAccess = project.owner.toString() === userId ||
-                     (project.manager && project.manager.toString() === userId) ||
+    const hasAccess = project.owner.toString() === userId.toString() ||
+                     (project.manager && project.manager.toString() === userId.toString()) ||
                      project.team.some(member => 
-                       member.user.toString() === userId && member.permissions.canAssess
+                       member.user.toString() === userId.toString() && member.permissions.canAssess
                      ) ||
                      req.user.isAdmin;
 
@@ -33,7 +33,7 @@ const startAssessment = async (req, res) => {
     }
 
     // For deep assessment, check if quick assessment is completed
-    if (type === 'deep' && !project.quickAssessment.isCompleted) {
+    if (type === 'deep' && !project.quickAssessment?.isCompleted) {
       return res.status(400).json({
         success: false,
         message: 'Quick assessment must be completed before starting deep assessment'
@@ -49,32 +49,50 @@ const startAssessment = async (req, res) => {
     });
 
     if (existingAssessment) {
-      return res.status(400).json({
-        success: false,
-        message: 'An assessment of this type is already in progress',
-        data: { assessment: existingAssessment }
+      // Return existing assessment with questions
+      const categories = await Category.find({ isActive: true }).sort({ order: 1 });
+      let questions = [];
+
+      for (const category of categories) {
+        const categoryQuestions = await Question.find({
+          category: category._id,
+          assessmentType: { $in: [type, 'both'] },
+          isActive: true
+        }).sort({ order: 1 }).limit(type === 'quick' ? 3 : 50);
+        
+        questions.push(...categoryQuestions);
+      }
+
+      return res.json({
+        success: true,
+        message: 'Existing assessment found',
+        data: {
+          assessment: existingAssessment,
+          questions: questions.map(q => ({
+            _id: q._id,
+            text: q.text,
+            type: q.type,
+            options: q.options,
+            category: q.category,
+            order: q.order
+          }))
+        }
       });
     }
 
-    // Get questions based on assessment type and project phase
+    // Get all active categories
+    const categories = await Category.find({ isActive: true }).sort({ order: 1 });
     let questions = [];
-    const categories = await Category.find({
-      phase: { $in: [project.phase, 'All'] },
-      isActive: true
-    }).sort({ order: 1 });
 
-    if (type === 'quick') {
-      // For quick assessment, get sample questions from each category
-      for (const category of categories) {
-        const categoryQuestions = await Question.getRandomQuestions(category._id, 3);
-        questions.push(...categoryQuestions);
-      }
-    } else {
-      // For deep assessment, get all questions
-      for (const category of categories) {
-        const categoryQuestions = await Question.getByCategory(category._id, 'deep');
-        questions.push(...categoryQuestions);
-      }
+    // Get questions based on assessment type
+    for (const category of categories) {
+      const categoryQuestions = await Question.find({
+        category: category._id,
+        assessmentType: { $in: [type, 'both'] },
+        isActive: true
+      }).sort({ order: 1 }).limit(type === 'quick' ? 3 : 50);
+      
+      questions.push(...categoryQuestions);
     }
 
     // Create assessment
@@ -101,7 +119,7 @@ const startAssessment = async (req, res) => {
       ? 'Quick Assessment In Progress' 
       : 'Deep Assessment In Progress';
     
-    await project.updateStatus(newStatus);
+    await Project.findByIdAndUpdate(projectId, { status: newStatus });
 
     const populatedAssessment = await Assessment.findById(assessment._id)
       .populate('project', 'name phase')
@@ -140,7 +158,7 @@ const submitAnswer = async (req, res) => {
   try {
     const { id } = req.params;
     const { questionId, selectedOption, textAnswer, timeSpent } = req.body;
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
 
     // Find assessment
     const assessment = await Assessment.findById(id);
@@ -152,7 +170,7 @@ const submitAnswer = async (req, res) => {
     }
 
     // Check if user owns this assessment
-    if (assessment.assessedBy.toString() !== userId) {
+    if (assessment.assessedBy.toString() !== userId.toString()) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to submit answers for this assessment'
@@ -178,61 +196,18 @@ const submitAnswer = async (req, res) => {
 
     // Calculate score based on question type and answer
     let score = 0;
-    if (question.type === 'multiple-choice' && selectedOption) {
-      const option = question.options.id(selectedOption.optionId);
-      score = option ? option.value : 0;
-    } else if (question.type === 'yes-no' && selectedOption) {
-      const option = question.options.id(selectedOption.optionId);
-      score = option ? option.value : 0;
-    } else if (question.type === 'scale' && selectedOption) {
-      score = selectedOption.value || 0;
+    if (selectedOption && selectedOption.value !== undefined) {
+      score = selectedOption.value;
     }
 
     // Add answer to assessment
-    await assessment.addAnswer(questionId, selectedOption, textAnswer, score, timeSpent);
-
-    // Update question usage
-    await question.incrementUsage();
-    await question.updateAverageScore(score);
-
-    // Check if all questions in current category are answered (for deep assessment)
-    if (assessment.type === 'deep') {
-      const currentCategoryQuestions = await Question.find({
-        category: assessment.currentCategory,
-        assessmentType: { $in: ['deep', 'both'] },
-        isActive: true
-      });
-
-      const answeredInCategory = assessment.answers.filter(answer =>
-        currentCategoryQuestions.some(q => q._id.toString() === answer.question.toString())
-      ).length;
-
-      // If all questions in category are answered, move to next category
-      if (answeredInCategory >= currentCategoryQuestions.length) {
-        const categories = await Category.find({
-          isActive: true
-        }).sort({ order: 1 });
-
-        const currentIndex = categories.findIndex(cat => 
-          cat._id.toString() === assessment.currentCategory.toString()
-        );
-
-        if (currentIndex < categories.length - 1) {
-          // Move to next category
-          assessment.currentCategory = categories[currentIndex + 1]._id;
-          assessment.completedCategories.push(categories[currentIndex]._id);
-        } else {
-          // All categories completed
-          assessment.completedCategories.push(categories[currentIndex]._id);
-          assessment.currentCategory = null;
-        }
-        await assessment.save();
-      }
-    }
+    await assessment.addAnswer(questionId, selectedOption, textAnswer, score, timeSpent || 0);
 
     const populatedAssessment = await Assessment.findById(assessment._id)
       .populate('currentCategory', 'name code color')
       .populate('completedCategories', 'name code color');
+
+    const isComplete = populatedAssessment.metadata.questionsAnswered >= populatedAssessment.metadata.questionsTotal;
 
     res.json({
       success: true,
@@ -240,7 +215,7 @@ const submitAnswer = async (req, res) => {
       data: {
         assessment: populatedAssessment,
         progress: populatedAssessment.progressPercentage,
-        isComplete: populatedAssessment.metadata.questionsAnswered >= populatedAssessment.metadata.questionsTotal
+        isComplete
       }
     });
   } catch (error) {
@@ -259,7 +234,7 @@ const submitAnswer = async (req, res) => {
 const completeAssessment = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
 
     // Find assessment
     const assessment = await Assessment.findById(id);
@@ -271,7 +246,7 @@ const completeAssessment = async (req, res) => {
     }
 
     // Check if user owns this assessment
-    if (assessment.assessedBy.toString() !== userId) {
+    if (assessment.assessedBy.toString() !== userId.toString()) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to complete this assessment'
@@ -293,7 +268,7 @@ const completeAssessment = async (req, res) => {
           weakestCategory: assessment.weakestCategory,
           duration: assessment.totalDuration
         };
-        await project.updateStatus('Quick Assessment Complete');
+        project.status = 'Quick Assessment Complete';
       } else {
         project.deepAssessment = {
           isCompleted: true,
@@ -304,7 +279,7 @@ const completeAssessment = async (req, res) => {
         };
         project.overallScore = assessment.overallScore;
         project.maturityLevel = assessment.maturityLevel.replace('Level ', '').replace(':', '');
-        await project.updateStatus('Deep Assessment Complete');
+        project.status = 'Deep Assessment Complete';
       }
 
       // Add to assessment history
@@ -340,7 +315,7 @@ const completeAssessment = async (req, res) => {
 const getAssessmentById = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
 
     const assessment = await Assessment.findById(id)
       .populate('project', 'name phase owner manager team')
@@ -361,12 +336,12 @@ const getAssessmentById = async (req, res) => {
 
     // Check access permissions
     const project = assessment.project;
-    const hasAccess = project.owner.toString() === userId ||
-                     (project.manager && project.manager.toString() === userId) ||
+    const hasAccess = project.owner.toString() === userId.toString() ||
+                     (project.manager && project.manager.toString() === userId.toString()) ||
                      project.team.some(member => 
-                       member.user.toString() === userId && member.permissions.canViewReports
+                       member.user.toString() === userId.toString() && member.permissions.canViewReports
                      ) ||
-                     assessment.assessedBy._id.toString() === userId ||
+                     assessment.assessedBy._id.toString() === userId.toString() ||
                      req.user.isAdmin;
 
     if (!hasAccess) {
@@ -397,7 +372,7 @@ const getProjectAssessments = async (req, res) => {
   try {
     const { projectId } = req.params;
     const { type, status, page = 1, limit = 10 } = req.query;
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
 
     // Validate project access
     const project = await Project.findById(projectId);
@@ -408,10 +383,10 @@ const getProjectAssessments = async (req, res) => {
       });
     }
 
-    const hasAccess = project.owner.toString() === userId ||
-                     (project.manager && project.manager.toString() === userId) ||
+    const hasAccess = project.owner.toString() === userId.toString() ||
+                     (project.manager && project.manager.toString() === userId.toString()) ||
                      project.team.some(member => 
-                       member.user.toString() === userId && member.permissions.canViewReports
+                       member.user.toString() === userId.toString() && member.permissions.canViewReports
                      ) ||
                      req.user.isAdmin;
 
@@ -470,7 +445,7 @@ const getProjectAssessments = async (req, res) => {
 // @access  Private
 const getAssessmentHistory = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
     const { page = 1, limit = 10, type, status } = req.query;
 
     const filter = { assessedBy: userId };
@@ -521,7 +496,7 @@ const getAssessmentHistory = async (req, res) => {
 const deleteAssessment = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userId = req.user._id || req.user.id;
 
     const assessment = await Assessment.findById(id);
     if (!assessment) {
@@ -532,7 +507,7 @@ const deleteAssessment = async (req, res) => {
     }
 
     // Only owner or admin can delete assessment
-    if (assessment.assessedBy.toString() !== userId && !req.user.isAdmin) {
+    if (assessment.assessedBy.toString() !== userId.toString() && !req.user.isAdmin) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to delete this assessment'
