@@ -1,21 +1,21 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import api from '../../services/api';
-import { Line, Radar, Doughnut, Bar } from 'react-chartjs-2';
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  RadialLinearScale,
-  Filler,
   ArcElement,
   BarElement,
+  CategoryScale,
+  Chart as ChartJS,
+  Filler,
+  Legend,
+  LinearScale,
+  LineElement,
+  PointElement,
+  RadialLinearScale,
+  Title,
+  Tooltip,
 } from 'chart.js';
+import { useEffect, useState } from 'react';
+import { Line, Radar } from 'react-chartjs-2';
+import { useNavigate, useParams } from 'react-router-dom';
+import api from '../../services/api';
 
 // Register Chart.js components
 ChartJS.register(
